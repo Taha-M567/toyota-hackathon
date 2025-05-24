@@ -113,10 +113,37 @@ try:
                 control.start_keyboard_control()
 
     if challengeLevel == 3:
+        # Load YOLO model for stop sign detection
+        model = YOLO('yolov8n.pt')  # Replace with your model path if needed
+        distance_threshold = 0.5
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
-            # Write your solution here for challenge level 3 (or 3.5)
+            # 1. Collision avoidance with LIDAR
+            scan = lidar.checkScan()
+            min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, distance_threshold, center=0, offset_angle=10)
+            if min_dist != -1:
+                print("Obstacle detected! Backing up.")
+                control.set_cmd_vel(-0.5, 0, 0.5)
+                time.sleep(1)
+                control.set_cmd_vel(0, 0, 0)
+                continue
+            # 2. Stop sign detection with camera and YOLO
+            frame = camera.getImage()
+            results = model(frame)
+            detected = False
+            for result in results:
+                for cls in result.boxes.cls:
+                    if int(cls) == 11:  # COCO stop sign class
+                        detected = True
+                        break
+            if detected:
+                print("Stop sign detected! Stopping robot.")
+                control.set_cmd_vel(0, 0, 0)
+                time.sleep(3)
+                continue
+            # 3. Default: move forward
+            control.set_cmd_vel(0.5, 0, 0)
 
     if challengeLevel == 4:
         while rclpy.ok():
