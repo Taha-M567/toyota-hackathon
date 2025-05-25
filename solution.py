@@ -62,8 +62,9 @@ try:
                 while min_dist != -1:
                     print('Moving robot backwards')
                     control.set_cmd_vel(-0.5, 0, 0.5)
+                    time.sleep(1)
                     scan = lidar.checkScan()
-                    distance_threshold = 0.1
+                    distance_threshold = 0.5
                     # check distance
                     min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, distance_threshold, center=0, offset_angle=10)
                 control.set_cmd_vel(0, 0, 0)
@@ -86,23 +87,12 @@ try:
                 
 
     if challengeLevel == 2:
-        # Load YOLO model (make sure the model can detect stop signs)
-        model = YOLO('yolov8n.pt')  # Replace with your model path if needed
-
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
-            # Capture image from camera
-            frame = camera.getImage()
-            # Run YOLO detection
-            results = model(frame)
-            detected = False
-            for result in results:
-                for cls in result.boxes.cls:
-                    # Class 11 is 'stop sign' in COCO dataset; check your model's class index
-                    if int(cls) == 11:
-                        detected = True
-                        break
+            # Get image and use ML_predict_stop_sign
+            frame = camera.rosImg_to_cv2()
+            detected, _, _, _, _ = camera.ML_predict_stop_sign(frame)
             if detected:
                 print("Stop sign detected! Stopping robot.")
                 control.set_cmd_vel(0, 0, 0)  # Stop the robot
@@ -112,43 +102,80 @@ try:
                 control.start_keyboard_control()
 
     if challengeLevel == 3:
-        # Load YOLO model for stop sign detection
-        model = YOLO('yolov8n.pt')  # Replace with your model path if needed
-        distance_threshold = 0.5
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
             # 1. Collision avoidance with LIDAR
             scan = lidar.checkScan()
-            min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, distance_threshold, center=0, offset_angle=10)
+            min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, 0.5,0, 10)
             if min_dist != -1:
                 print("Obstacle detected! Backing up.")
                 control.set_cmd_vel(-0.5, 0, 0.5)
                 time.sleep(1)
                 control.set_cmd_vel(0, 0, 0)
                 continue
-            # 2. Stop sign detection with camera and YOLO
-            frame = camera.checkImage()
-            results = model(frame)
-            detected = False
-            for result in results:
-                for cls in result.boxes.cls:
-                    if int(cls) == 11:  # COCO stop sign class
-                        detected = True
-                        break
+
+            # 2. Stop sign detection with camera
+            frame = camera.rosImg_to_cv2()
+            detected, _, _, _, _ = camera.ML_predict_stop_sign(frame)
             if detected:
                 print("Stop sign detected! Stopping robot.")
                 control.set_cmd_vel(0, 0, 0)
                 time.sleep(3)
                 continue
+
             # 3. Default: move forward
             control.set_cmd_vel(0.5, 0, 0)
 
     if challengeLevel == 4:
+        # Initialize variables for autonomous navigation
+        target_angle = 0  # Target angle for navigation
+        angle_threshold = 5  # Acceptable angle difference in degrees
+        
         while rclpy.ok():
             rclpy.spin_once(robot, timeout_sec=0.1)
             time.sleep(0.1)
-            # Write your solution here for challenge level 4
+            
+            # 1. Collision avoidance with LIDAR
+            scan = lidar.checkScan()
+            min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, 0.5, 0, 10)
+            if min_dist != -1:
+                print("Obstacle detected! Adjusting course.")
+                # Turn away from obstacle
+                turn_direction = 1 if min_dist_angle > 0 else -1
+                control.set_cmd_vel(0, turn_direction * 0.5, 0.5)
+                time.sleep(1)
+                continue
+
+            # 2. Stop sign detection
+            frame = camera.rosImg_to_cv2()
+            detected, _, _, _, _ = camera.ML_predict_stop_sign(frame)
+            if detected:
+                print("Stop sign detected! Stopping robot.")
+                control.set_cmd_vel(0, 0, 0)
+                time.sleep(3)
+                continue
+
+            # 3. Navigation using IMU
+            quaternion = imu.checkImu()
+            _, _, yaw = imu.euler_from_quaternion(quaternion)
+            current_angle = math.degrees(yaw)
+            angle_diff = current_angle - target_angle
+            
+            # Normalize angle difference to [-180, 180]
+            if angle_diff > 180:
+                angle_diff -= 360
+            elif angle_diff < -180:
+                angle_diff += 360
+
+            # Adjust heading if needed
+            if abs(angle_diff) > angle_threshold:
+                print(f"Adjusting heading. Current: {current_angle}, Target: {target_angle}")
+                turn_direction = -1 if angle_diff > 0 else 1
+                control.set_cmd_vel(0.3, turn_direction * 0.3, 0.5)
+            else:
+                # Move forward if heading is correct
+                control.set_cmd_vel(0.5, 0, 0)
 
     if challengeLevel == 5:
         while rclpy.ok():
