@@ -10,10 +10,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 # Variable for controlling which level of the challenge to test -- set to 0 for pure keyboard control
-challengeLevel = 1
+challengeLevel = 2
 
 # Set to True if you want to run the simulation, False if you want to run on the real robot
-is_SIM = False
+is_SIM = True
 
 # Set to True if you want to run in debug mode with extra print statements, False otherwise
 Debug = False
@@ -62,9 +62,8 @@ try:
                 while min_dist != -1:
                     print('Moving robot backwards')
                     control.set_cmd_vel(-0.5, 0, 0.5)
-                    time.sleep(1)
                     scan = lidar.checkScan()
-                    distance_threshold = 0.5
+                    distance_threshold = 0.1
                     # check distance
                     min_dist, min_dist_angle = lidar.detect_obstacle_in_cone(scan, distance_threshold, center=0, offset_angle=10)
                 control.set_cmd_vel(0, 0, 0)
@@ -129,7 +128,7 @@ try:
                 control.set_cmd_vel(0, 0, 0)
                 continue
             # 2. Stop sign detection with camera and YOLO
-            frame = camera.getImage()
+            frame = camera.checkImage()
             results = model(frame)
             detected = False
             for result in results:
